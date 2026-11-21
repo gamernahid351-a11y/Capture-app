@@ -1,0 +1,159 @@
+name: Build FFCapture APK
+
+on:
+  push:
+    branches: [ main, master, dev ]
+    tags:     [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:          # manual trigger from GitHub UI
+
+jobs:
+  # ─────────────────────────────────────────────────────────
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Java 17
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      # 3. Cache Gradle
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      # 4. Grant execute permission
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      # 5. Build DEBUG APK
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      # 6. Build RELEASE APK (unsigned; sign if secrets are present)
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      # 7. Sign release APK (only if keystore secrets are configured)
+      - name: Sign release APK
+        if: |
+          github.event_name != 'pull_request' &&
+          secrets.KEYSTORE_BASE64 != ''
+        uses: r0adkll/sign-android-release@v1
+        id: sign_apk
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
+          alias:            ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword:      ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
+
+      # 8. Upload debug APK as artifact
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FFCapture-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+
+      # 9. Upload release APK as artifact
+      - name: Upload release APK (unsigned)
+        uses: actions/upload-artifact@v4
+        with:
+          name: FFCapture-release-${{ github.sha }}
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      # 10. Upload signed APK (only if signing happened)
+      - name: Upload signed release APK
+        if: steps.sign_apk.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FFCapture-release-signed-${{ github.sha }}
+          path: ${{ steps.sign_apk.outputs.signedReleaseFile }}
+          retention-days: 90
+
+  # ─────────────────────────────────────────────────────────
+  # Create GitHub Release on tag push
+  # ─────────────────────────────────────────────────────────
+  release:
+    name: GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Sign APK (if keys present)
+        if: secrets.KEYSTORE_BASE64 != ''
+        uses: r0adkll/sign-android-release@v1
+        id: sign_release
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
+          alias:            ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword:      ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "FFCapture ${{ github.ref_name }}"
+          body: |
+            ## FFCapture ${{ github.ref_name }}
+
+            **Free Fire packet capture + decoder for Android**
+
+            ### Features
+            - VPN-based capture (no root needed)
+            - AES decrypt (static + session key)
+            - Protobuf decode with deep scan
+            - Edit & resend TCP/UDP packets
+            - Varint / ZigZag encoder/decoder
+            - build_mark_info() packet builder
+            - JSON export (HTTP / TCP / UDP / All)
+
+            ### APK
+            Install the APK below. Enable "Unknown sources" in Android settings.
+          files: |
+            app/build/outputs/apk/release/*.apk
+            ${{ steps.sign_release.outputs.signedReleaseFile }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
