@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.ffcapture'
+    namespace 'com.meheedicapture'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.ffcapture"
+        applicationId "com.meheedicapture"
         minSdk 26
         targetSdk 34
         versionCode 1

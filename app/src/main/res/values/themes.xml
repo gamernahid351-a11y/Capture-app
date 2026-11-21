@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.FFCapture" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+    <style name="Theme.MehediCapture" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
         <item name="colorPrimary">#1A1A2E</item>
         <item name="colorPrimaryVariant">#16213E</item>
         <item name="colorOnPrimary">@android:color/white</item>

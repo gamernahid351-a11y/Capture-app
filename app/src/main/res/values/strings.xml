@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">FF Capture</string>
+    <string name="app_name">Mehedi Capture</string>
     <string name="channel_http">HTTP</string>
     <string name="channel_tcp">TCP</string>
     <string name="channel_udp">UDP</string>
